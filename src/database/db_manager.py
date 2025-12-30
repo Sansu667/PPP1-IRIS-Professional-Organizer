@@ -62,3 +62,12 @@ def actualizar_tarea(id_tarea, completada, exito):
                    """, (valor_completada, exito, id_tarea))
     conexion.commit()
     conexion.close()
+
+def eliminar_tarea(id_tarea):
+    conexion = sqlite3.connect("iris_datos.db")
+    cursor = conexion.cursor()
+
+    cursor.execute("DELETE FROM tareas WHERE id = ?", (id_tarea,))
+
+    conexion.commit()
+    conexion.close()

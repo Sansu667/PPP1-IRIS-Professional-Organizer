@@ -1,5 +1,5 @@
 from core.habits import Tarea
-from database.db_manager import crear_base_de_datos, guardar_tarea, cargar_tareas, actualizar_tarea
+from database.db_manager import crear_base_de_datos, guardar_tarea, cargar_tareas, actualizar_tarea, eliminar_tarea
 
 crear_base_de_datos() # Aquí aseguro que la tabla exista al iniciar
 mis_tareas = cargar_tareas()
@@ -9,7 +9,8 @@ while salir == False:
           1. Crear nueva tarea
           2. Revisar tus tareas
           3. Marcar tarea como completada
-          4. Salir de Iris
+          4. Borrar tarea
+          5. Salir de Iris
           """)
     
     opcion_usuario = int(input("Introduce la opción que deseas: "))
@@ -48,7 +49,25 @@ while salir == False:
              print(f"¡Base de datos actualizada! Éxito actual: {tarea_elegida.porcentaje_exito}%")
          else:
              print("La tarea que seleccionaste no existe. Comprueba de nuevo")
-
     elif opcion_usuario == 4:
+        if len(mis_tareas) == 0:
+            print("No hay tareas para borrar.")
+        else:
+            print("--- Selecciona la tarea que deseas eliminar ---")
+            for index, t in enumerate(mis_tareas, start=1):
+                print(f"{index}: {t.nombre}")
+
+            seleccion = int(input("Introduce el número de la tarea: "))
+            indice_real = seleccion - 1
+
+            if 0 <= indice_real < len(mis_tareas):
+                tarea_a_eliminar = mis_tareas[indice_real]
+                eliminar_tarea(tarea_a_eliminar.id)
+                mis_tareas.pop(indice_real)
+
+                print(f"¡'{tarea_a_eliminar.nombre}' ha sido eliminada")
+            else:
+                print("Selección inválida")
+    elif opcion_usuario == 5:
          print("Saliendo de Iris...")
          break
