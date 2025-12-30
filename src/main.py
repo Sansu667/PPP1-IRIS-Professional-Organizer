@@ -1,8 +1,8 @@
 from core.habits import Tarea
-import math
-from datetime import datetime
+from database.db_manager import crear_base_de_datos, guardar_tarea, cargar_tareas, actualizar_tarea
 
-mis_tareas = []
+crear_base_de_datos() # Aquí aseguro que la tabla exista al iniciar
+mis_tareas = cargar_tareas()
 salir = False
 while salir == False:
     print(""" ----- Bienvenido a Iris -----
@@ -17,9 +17,12 @@ while salir == False:
     if opcion_usuario == 1:
         entrada = input("Ingresa el nombre de la tarea y la fecha límite (Ej: Tarea, AAAA-MM-DD): ")
         datos = entrada.split(",")
-        nueva_tarea = Tarea(datos[0], datos[1])
-        mis_tareas.append(nueva_tarea)
-        
+        nueva_tarea = Tarea(datos[0].strip(), datos[1].strip())
+        mis_tareas.append(nueva_tarea) # Aquí busco, como ya lo había construido, guardar las tareas en la lista vacía.
+        guardar_tarea(nueva_tarea) # Entonces con esta línea de código guardo la tarea en la base de datos "iris_datos.db"
+        mis_tareas = cargar_tareas()
+        print("¡Tarea guardada correctamente!")
+
     elif opcion_usuario == 2:
          if len(mis_tareas) == 0:
               print("No hay tareas registradas aún.")
@@ -39,6 +42,10 @@ while salir == False:
          if indice_real >= 0 and indice_real < len(mis_tareas):
              tarea_elegida = mis_tareas[indice_real]
              tarea_elegida.marcar_como_completada()
+
+             actualizar_tarea(tarea_elegida.id, tarea_elegida.completada, tarea_elegida.porcentaje_exito)
+
+             print(f"¡Base de datos actualizada! Éxito actual: {tarea_elegida.porcentaje_exito}%")
          else:
              print("La tarea que seleccionaste no existe. Comprueba de nuevo")
 
