@@ -4,6 +4,19 @@ from database.db_manager import crear_base_de_datos, guardar_tarea, cargar_tarea
 crear_base_de_datos() # Aquí aseguro que la tabla exista al iniciar
 mis_tareas = cargar_tareas()
 salir = False
+
+def mostrar_tareas_numeradas(lista_tareas):
+    if not lista_tareas:
+        print("\n📭 No hay tareas en la lista.")
+        return False
+    
+    print("\n--- Lista de Tareas ---")
+    for index, t in enumerate(lista_tareas, start=1):
+        estado = "✅" if t.completada else "⏳"
+        print(f"{index}. {estado} {t.nombre} (Plazo: {t.fecha_limite.strftime('%d-%m-%Y')})")
+    print("-----------------------\n")
+    return True
+
 while salir == False:
     print(""" ----- Bienvenido a Iris -----
           1. Crear nueva tarea
@@ -40,7 +53,7 @@ while salir == False:
              print(f"{index}: {t.nombre}")
          opcion_usuario_completar = int(input("¿Cuál tarea quieres marcar como completada? "))
          indice_real = opcion_usuario_completar - 1
-         if indice_real >= 0 and indice_real < len(mis_tareas):
+         if mostrar_tareas_numeradas(mis_tareas):
              tarea_elegida = mis_tareas[indice_real]
              tarea_elegida.marcar_como_completada()
 
@@ -60,7 +73,7 @@ while salir == False:
             seleccion = int(input("Introduce el número de la tarea: "))
             indice_real = seleccion - 1
 
-            if 0 <= indice_real < len(mis_tareas):
+            if mostrar_tareas_numeradas(mis_tareas):
                 tarea_a_eliminar = mis_tareas[indice_real]
                 eliminar_tarea(tarea_a_eliminar.id)
                 mis_tareas.pop(indice_real)
@@ -71,3 +84,5 @@ while salir == False:
     elif opcion_usuario == 5:
          print("Saliendo de Iris...")
          break
+    
+
