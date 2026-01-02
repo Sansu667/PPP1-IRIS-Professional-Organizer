@@ -20,14 +20,23 @@ class Tarea: # Esta será la clase para hacer el molde de la tarea
         self.calcular_metricas()
 
     def calcular_metricas(self):
-        diferencia = self.fecha_finalizacion - self.fecha_limite # En este punto calculo la diferencia de días entre la fecha que se tenía propuesta (fecha_límite) y la fecha en la cual se completó la tarea
-        dias_diferencia = diferencia.days # Entonces se pasa ese valor de la diferencia para que se pueda visualizar los números de días.
-        if dias_diferencia <= 0: # Valido entonces si el número de días fue positivo o negativo, para así beneficiar la puntualidad o penalizar el atraso que se haya realizado.
-            self.porcentaje_exito += 10
-            print(f"Felicidades, terminaste con {abs(dias_diferencia)} días de adelanto.")
+        diferencia = self.fecha_finalizacion - self.fecha_limite
+        dias_diferencia = diferencia.days 
+
+        # Si terminas justo el día límite, tu éxito base es 100.
+        # Si terminas antes, podrías tener un "bonus".
+        # Si terminas tarde, restamos puntos por cada día de retraso.
+        
+        if dias_diferencia <= 0:
+            # Éxito total por cumplir a tiempo
+            self.porcentaje_exito = 100 
+            print(f"✨ ¡Objetivo cumplido! {abs(dias_diferencia)} días de adelanto.")
         else:
-            self.porcentaje_exito -= 10
-            print(f"Ánimo, te atrasaste {dias_diferencia} días. ¡A por la siguiente!")
+            # Penalización: 100 menos 10 puntos por cada día de retraso
+            # Usamos max(0, ...) para que el éxito no sea un número negativo
+            penalizacion = dias_diferencia * 10
+            self.porcentaje_exito = max(0, 100 - penalizacion)
+            print(f"⚠️ Tarea completada con retraso de {dias_diferencia} días.")
 
     def para_db(self):
         return (self.nombre, str(self.fecha_limite, int(self.completada), self.porcentaje_exito)) # Con esto busco que retorne una tupla con los datos listos para SQL

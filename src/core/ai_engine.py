@@ -31,4 +31,4 @@ def generar_reporte(lista_tareas):
     else:
         estado = "Modo rescate: Necesitas retomar el control de tus tareas."
 
-    return f"{estado}\nDisciplina actual: {promedio:1.f}%{mensaje_urgencia}"
+    return f"{estado}\nDisciplina actual: {promedio:.1f}%{mensaje_urgencia}"
