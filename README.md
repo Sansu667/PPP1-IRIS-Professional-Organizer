@@ -19,7 +19,7 @@ Este proyecto nace como un reto personal de aprendizaje y desarrollo, buscando c
 - **Inteligencia Artificial:** Scikit-learn
 
 ## 📈 Hoja de ruta (Roadmap)
-- [ ] **Fase 1:** Estructura básica de la base de datos y CRUD de tareas.
-- [ ] **Fase 2:** Sistema de lógica de hábitos y rachas.
+- [x] **Fase 1:** Estructura básica de la base de datos y CRUD de tareas.
+- [] **Fase 2:** Sistema de lógica de hábitos y rachas.
 - [ ] **Fase 3:** Integración del módulo de IA para seguimiento inteligente.
 - [ ] **Fase 4 (V2.0):** Módulo de gestión de presupuestos y finanzas personales para estudiantes.

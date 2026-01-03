@@ -1,13 +1,14 @@
 import sys
 from datetime import datetime
 from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, 
-                             QHBoxLayout, QLabel, QLineEdit, QPushButton, 
-                             QTableWidget, QTableWidgetItem, QHeaderView, 
-                             QDateEdit, QMessageBox)
+    QHBoxLayout, QLabel, QLineEdit, QPushButton, 
+    QTableWidget, QTableWidgetItem, QHeaderView, 
+    QDateEdit, QMessageBox, QTextEdit)
 from PyQt6.QtCore import Qt, QDate
 from PyQt6.QtGui import QIcon, QFont, QColor
 
 # Importamos tu lógica existente
+from ui.components.progress_chart import ProgressChart
 from core.habits import Tarea
 from core.ai_engine import generar_reporte
 from database.db_manager import guardar_tarea, cargar_tareas, actualizar_tarea, eliminar_tarea
@@ -71,15 +72,27 @@ class MainWindow(QMainWindow):
         self.layout_principal = QVBoxLayout(central_widget)
 
         # 1. SECCIÓN IA (Cerebro)
+        ia_section_layout = QHBoxLayout() # Usamos un layout horizontal para IA y gráfico
+        
+        ia_text_layout = QVBoxLayout() # Columna izquierda para el texto de IA
         self.label_titulo = QLabel("🧠 ANÁLISIS DE IRIS")
         self.label_titulo.setFont(QFont("Segoe UI", 12, QFont.Weight.Bold))
-        self.layout_principal.addWidget(self.label_titulo)
+        ia_text_layout.addWidget(self.label_titulo)
 
         self.reporte_ia = QLabel("Cargando análisis...")
-        self.reporte_ia.setObjectName("ai_report") # Para aplicar el estilo especial
-        self.reporte_ia.setWordWrap(True) # Para que el texto baje si es muy largo
-        self.layout_principal.addWidget(self.reporte_ia)
+        self.reporte_ia.setObjectName("ai_report")
+        self.reporte_ia.setWordWrap(True)
+        ia_text_layout.addWidget(self.reporte_ia)
 
+        ia_section_layout.addLayout(ia_text_layout, 2) # Texto ocupa 2/3 del espacio
+
+
+        # --- AÑADIMOS EL GRÁFICO AQUÍ ---
+        self.progress_chart = ProgressChart()
+        ia_section_layout.addWidget(self.progress_chart, 1) # Gráfico ocupa 1/3 del espacio
+        
+        self.layout_principal.addLayout(ia_section_layout) # Añadimos el layout horizontal al principal
+        
         # 2. SECCIÓN DE INPUTS (Crear Tarea)
         input_layout = QHBoxLayout()
         
@@ -131,19 +144,44 @@ class MainWindow(QMainWindow):
         
         self.layout_principal.addLayout(botones_layout)
 
+        # 5. CONSOLA DE LOGS/FEEDBACK DE IRIS
+        self.ai_log = QTextEdit()
+        self.ai_log.setReadOnly(True) # Solo lectura
+        self.ai_log.setPlaceholderText("Iris te dará feedback y consejos aquí...")
+        self.ai_log.setStyleSheet("""
+            QTextEdit {
+                background-color: #252526;
+                color: #dcdcdc;
+                border: 1px solid #3e3e3e;
+                border-radius: 4px;
+                padding: 10px;
+                font-family: 'Consolas', 'Monospace';
+            }
+        """)
+        self.layout_principal.addWidget(self.ai_log)
+
         # Cargar datos al iniciar
         self.cargar_datos()
 
+
+
     def cargar_datos(self):
         self.mis_tareas = cargar_tareas()
+
+        self.tabla.setRowCount(0)
         
         # Actualizar IA
         mensaje_ia = generar_reporte(self.mis_tareas)
         self.reporte_ia.setText(mensaje_ia)
 
         # Actualizar Tabla
-        self.tabla.setRowCount(0)
-        
+        if self.mis_tareas:
+            suma_exito = sum(t.porcentaje_exito for t in self.mis_tareas)
+            promedio_general = suma_exito / len(self.mis_tareas)
+            self.progress_chart.update_chart(promedio_general)
+        else:
+            self.progress_chart.update_chart(0) # Si no hay tareas, mostrar 0%
+
         hoy = datetime.now().date() # Fecha de hoy para comparar
 
         for row, tarea in enumerate(self.mis_tareas):
@@ -187,9 +225,9 @@ class MainWindow(QMainWindow):
 
         nueva_tarea = Tarea(nombre, fecha)
         guardar_tarea(nueva_tarea)
-        
         self.input_nombre.clear()
         self.cargar_datos() # Refrescar interfaz
+        self.ai_log.append(f"🤖 Iris: Tarea '{nombre}' creada. ¡A por ella!") # <--- NUEVO MENSAJE
 
     def completar_tarea_seleccionada(self):
         fila = self.tabla.currentRow()
@@ -207,16 +245,33 @@ class MainWindow(QMainWindow):
             actualizar_tarea(tarea_obj.id, tarea_obj.completada, tarea_obj.porcentaje_exito)
             self.cargar_datos()
             QMessageBox.information(self, "¡Felicidades!", f"Tarea completada. Éxito: {tarea_obj.porcentaje_exito}%")
+            self.ai_log.append(f"🤖 Iris: ¡Felicidades! Completaste '{tarea_obj.nombre}' con {tarea_obj.porcentaje_exito}% de éxito.") # <--- NUEVO MENSAJE
 
     def eliminar_tarea_seleccionada(self):
         fila = self.tabla.currentRow()
         if fila < 0:
             return
         
-        confirmacion = QMessageBox.question(self, "Borrar", "¿Estás seguro?", 
+        # 1. Identificamos la tarea ANTES de borrarla
+        id_tarea = int(self.tabla.item(fila, 0).text())
+        # Buscamos el objeto en nuestra lista para saber su nombre
+        tarea_a_eliminar = next((t for t in self.mis_tareas if t.id == id_tarea), None)
+
+        if not tarea_a_eliminar:
+            return
+
+        confirmacion = QMessageBox.question(self, "Borrar", f"¿Seguro que quieres borrar '{tarea_a_eliminar.nombre}'?", 
                                             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
         
         if confirmacion == QMessageBox.StandardButton.Yes:
-            id_tarea = int(self.tabla.item(fila, 0).text())
+            # 2. Borramos de la base de datos
             eliminar_tarea(id_tarea)
+            
+            # 3. Guardamos el nombre para el log antes de refrescar
+            nombre_borrado = tarea_a_eliminar.nombre
+            
+            # 4. Refrescamos la interfaz y la lista
             self.cargar_datos()
+            
+            # 5. Informamos a través de la IA
+            self.ai_log.append(f"🤖 Iris: '{nombre_borrado}' eliminada de tu lista.")

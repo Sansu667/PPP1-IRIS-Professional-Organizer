@@ -1,0 +1,13 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+venv/
+.env
+
+# Base de datos local
+data/iris_db.sqlite
+
+# IDEs
+.vscode/
+.idea/
