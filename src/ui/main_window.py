@@ -3,7 +3,7 @@ from datetime import datetime
 from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, 
     QHBoxLayout, QLabel, QLineEdit, QPushButton, 
     QTableWidget, QTableWidgetItem, QHeaderView, 
-    QDateEdit, QMessageBox, QTextEdit)
+    QDateEdit, QMessageBox, QTextEdit, QProgressBar, QFrame)
 from PyQt6.QtCore import Qt, QDate
 from PyQt6.QtGui import QIcon, QFont, QColor
 from ui.components.progress_chart import ProgressChart
@@ -56,9 +56,11 @@ class MainWindow(QMainWindow):
             
             QLabel#ai_report {
                 background-color: #2d2d2d;
+                border-radius: 10px;
                 border-left: 5px solid #bd93f9; /* Borde morado estilo Iris */
-                padding: 15px;
-                font-style: italic;
+                padding: 20px;
+                font-size: 15px;
+                line-height: 1.5;
                 color: #f8f8f2;
             }
         """)
@@ -118,27 +120,54 @@ class MainWindow(QMainWindow):
         self.tabla.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self.tabla.setSelectionMode(QTableWidget.SelectionMode.SingleSelection)
         self.tabla.verticalHeader().setVisible(False)
+        self.tabla.verticalHeader().setDefaultSectionSize(40)
         self.tabla.setColumnHidden(0, True) 
         self.layout_principal.addWidget(self.tabla)
 
-        # 4. SECCIÓN BOTONES DE ACCIÓN
+        # --- 4. SECCIÓN BOTONES DE ACCIÓN ---
         botones_layout = QHBoxLayout()
         
-        self.btn_completar = QPushButton("✅ Marcar Completada")
+        # Primero CREAMOS los botones
+        self.btn_completar = QPushButton("✔️ Completar")
         self.btn_completar.setObjectName("btn_complete")
-        self.btn_completar.clicked.connect(self.completar_tarea_seleccionada)
         
-        self.btn_eliminar = QPushButton("🗑️ Eliminar Tarea")
+        self.btn_eliminar = QPushButton("🗑️ Eliminar")
         self.btn_eliminar.setObjectName("btn_delete")
+
+        # El botón agregar ya lo habías creado arriba en la sección de INPUTS, 
+        # así que solo le actualizamos el texto aquí
+        self.btn_agregar.setText("➕ Crear Tarea")
+
+        # Definimos la función de sombra (la sacamos del bucle para que sea más limpio)
+        from PyQt6.QtWidgets import QGraphicsDropShadowEffect
+        from PyQt6.QtGui import QColor
+
+        def aplicar_sombra(widget):
+            sombra = QGraphicsDropShadowEffect()
+            sombra.setBlurRadius(15)
+            sombra.setXOffset(0)
+            sombra.setYOffset(3)
+            sombra.setColor(QColor(0, 0, 0, 150))
+            widget.setGraphicsEffect(sombra)
+
+        # Ahora que ya existen todos, aplicamos las sombras
+        aplicar_sombra(self.btn_agregar)
+        aplicar_sombra(self.btn_completar)
+        aplicar_sombra(self.btn_eliminar)
+
+        # Conectamos las funciones a los botones
+        self.btn_completar.clicked.connect(self.completar_tarea_seleccionada)
         self.btn_eliminar.clicked.connect(self.eliminar_tarea_seleccionada)
 
-        botones_layout.addStretch()
+        # Añadimos los botones al layout horizontal
+        botones_layout.addStretch() # Esto los empuja a la derecha
         botones_layout.addWidget(self.btn_completar)
         botones_layout.addWidget(self.btn_eliminar)
         
+        # Añadimos el layout de botones al layout principal
         self.layout_principal.addLayout(botones_layout)
 
-        # 5. CONSOLA DE LOGS/FEEDBACK DE IRIS
+        # --- 5. CONSOLA DE LOGS/FEEDBACK DE IRIS ---
         self.ai_log = QTextEdit()
         self.ai_log.setReadOnly(True)
         self.ai_log.setPlaceholderText("Iris te dará feedback y consejos aquí...")
@@ -153,58 +182,84 @@ class MainWindow(QMainWindow):
             }
         """)
         self.layout_principal.addWidget(self.ai_log)
+
+        # Finalmente cargamos los datos
         self.cargar_datos()
-
-
 
     def cargar_datos(self):
         self.mis_tareas = cargar_tareas()
-
         self.tabla.setRowCount(0)
         
-        # Actualizar IA
+        # 1. Actualizar IA
         mensaje_ia = generar_reporte(self.mis_tareas)
         self.reporte_ia.setText(mensaje_ia)
 
-        # Actualizar Tabla
+        # 2. Actualizar Gráfico Circular (Donut Chart)
         if self.mis_tareas:
             suma_exito = sum(t.porcentaje_exito for t in self.mis_tareas)
             promedio_general = suma_exito / len(self.mis_tareas)
             self.progress_chart.update_chart(promedio_general)
         else:
-            self.progress_chart.update_chart(0) # Si no hay tareas, mostrar 0%
+            self.progress_chart.update_chart(0)
 
         hoy = datetime.now().date()
 
+        # 3. Poblar la Tabla
         for row, tarea in enumerate(self.mis_tareas):
             self.tabla.insertRow(row)
-            
             fecha_tarea = tarea.fecha_limite.date()
             
-            # --- LÓGICA DE COLORES ---
+            # Lógica de colores de fondo para las celdas de texto
             color_fondo = None
             if tarea.completada:
-                color_fondo = QColor("#2e7d32") # Verde oscuro (éxito)
+                color_fondo = QColor("#2e7d32") # Verde
             elif fecha_tarea < hoy:
-                color_fondo = QColor("#c62828") # Rojo oscuro (vencida)
+                color_fondo = QColor("#c62828") # Rojo
             
-            # Función auxiliar para crear celdas coloreadas
             def crear_celda(texto):
                 item = QTableWidgetItem(str(texto))
                 if color_fondo:
                     item.setBackground(color_fondo)
-                    item.setForeground(Qt.GlobalColor.white) # Texto blanco para contraste
+                    item.setForeground(Qt.GlobalColor.white)
                 return item
 
-            # Inserto los datos usando la celda coloreada
+            # Insertar datos en columnas 0 a 3
             self.tabla.setItem(row, 0, crear_celda(tarea.id))
             self.tabla.setItem(row, 1, crear_celda(tarea.nombre))
             self.tabla.setItem(row, 2, crear_celda(tarea.fecha_limite.strftime('%Y-%m-%d')))
-            
             estado_texto = "Completada" if tarea.completada else "Pendiente"
             self.tabla.setItem(row, 3, crear_celda(estado_texto))
             
-            self.tabla.setItem(row, 4, crear_celda(f"{tarea.porcentaje_exito}%"))
+            # --- 4. COLUMNA DE ÉXITO (Solo la Barra de Progreso) ---
+            # Eliminamos la línea self.tabla.setItem(row, 4, ...) para que no haya texto detrás de la barra
+            
+            progreso_bar = QProgressBar()
+            
+            # CORRECCIÓN DEL ERROR: Convertir float a int
+            valor_entero = int(tarea.porcentaje_exito) 
+            progreso_bar.setValue(valor_entero)
+            
+            progreso_bar.setTextVisible(True)
+            progreso_bar.setAlignment(Qt.AlignmentFlag.AlignCenter)
+
+            # Estilo moderno para la barra
+            progreso_bar.setStyleSheet("""
+                QProgressBar {
+                    border: 1px solid #3e3e3e;
+                    border-radius: 5px;
+                    background-color: #2d2d2d;
+                    text-align: center;
+                    color: white;
+                }
+                QProgressBar::chunk {
+                    background-color: qlineargradient(x1:0, y1:0, x2:1, y2:0, 
+                                    stop:0 #007acc, stop:1 #00d4ff);
+                    border-radius: 4px;
+                }
+            """)
+
+            # Colocamos el Widget en la columna 4
+            self.tabla.setCellWidget(row, 4, progreso_bar)
 
     def agregar_tarea(self):
         nombre = self.input_nombre.text()
@@ -262,3 +317,9 @@ class MainWindow(QMainWindow):
             self.cargar_datos()
             
             self.ai_log.append(f"🤖 Iris: '{nombre_borrado}' eliminada de tu lista.")
+
+    def closeEvent(self, event):
+        """Asegura que la base de datos y los gráficos se cierren correctamente"""
+        # Aquí podrías añadir un mensaje de despedida en el log si quisieras
+        print("Cerrando Iris de forma segura...")
+        event.accept()
