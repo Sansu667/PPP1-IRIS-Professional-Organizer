@@ -6,8 +6,6 @@ from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout,
     QDateEdit, QMessageBox, QTextEdit)
 from PyQt6.QtCore import Qt, QDate
 from PyQt6.QtGui import QIcon, QFont, QColor
-
-# Importamos tu lógica existente
 from ui.components.progress_chart import ProgressChart
 from core.habits import Tarea
 from core.ai_engine import generar_reporte
@@ -18,10 +16,9 @@ class MainWindow(QMainWindow):
         super().__init__()
 
         self.setWindowTitle("IRIS - Professional Organizer")
-        self.setGeometry(100, 100, 900, 600) # Tamaño inicial
+        self.setGeometry(100, 100, 900, 600)
         
-        # --- ESTILOS (CSS) ---
-        # Aquí definimos el look "Dark Professional"
+        # --- ESTILOS ---
         self.setStyleSheet("""
             QMainWindow { background-color: #1e1e1e; }
             QLabel { color: #ffffff; font-size: 14px; }
@@ -71,10 +68,10 @@ class MainWindow(QMainWindow):
         self.setCentralWidget(central_widget)
         self.layout_principal = QVBoxLayout(central_widget)
 
-        # 1. SECCIÓN IA (Cerebro)
-        ia_section_layout = QHBoxLayout() # Usamos un layout horizontal para IA y gráfico
+        # 1. SECCIÓN IA
+        ia_section_layout = QHBoxLayout()
         
-        ia_text_layout = QVBoxLayout() # Columna izquierda para el texto de IA
+        ia_text_layout = QVBoxLayout()
         self.label_titulo = QLabel("🧠 ANÁLISIS DE IRIS")
         self.label_titulo.setFont(QFont("Segoe UI", 12, QFont.Weight.Bold))
         ia_text_layout.addWidget(self.label_titulo)
@@ -84,47 +81,44 @@ class MainWindow(QMainWindow):
         self.reporte_ia.setWordWrap(True)
         ia_text_layout.addWidget(self.reporte_ia)
 
-        ia_section_layout.addLayout(ia_text_layout, 2) # Texto ocupa 2/3 del espacio
+        ia_section_layout.addLayout(ia_text_layout, 2)
 
 
-        # --- AÑADIMOS EL GRÁFICO AQUÍ ---
+        # Aquí pongo el gráfico
         self.progress_chart = ProgressChart()
-        ia_section_layout.addWidget(self.progress_chart, 1) # Gráfico ocupa 1/3 del espacio
+        ia_section_layout.addWidget(self.progress_chart, 1)
         
-        self.layout_principal.addLayout(ia_section_layout) # Añadimos el layout horizontal al principal
+        self.layout_principal.addLayout(ia_section_layout)
         
-        # 2. SECCIÓN DE INPUTS (Crear Tarea)
+        # 2. SECCIÓN DE INPUTS
         input_layout = QHBoxLayout()
         
         self.input_nombre = QLineEdit()
         self.input_nombre.setPlaceholderText("Nombre de la tarea...")
         
         self.input_fecha = QDateEdit()
-        self.input_fecha.setCalendarPopup(True) # Muestra calendario al hacer clic
+        self.input_fecha.setCalendarPopup(True)
         self.input_fecha.setDate(QDate.currentDate())
         self.input_fecha.setDisplayFormat("yyyy-MM-dd")
 
         self.btn_agregar = QPushButton("Crear Tarea")
         self.btn_agregar.clicked.connect(self.agregar_tarea)
 
-        input_layout.addWidget(self.input_nombre, 2) # El 2 significa que ocupa el doble de espacio
+        input_layout.addWidget(self.input_nombre, 2)
         input_layout.addWidget(self.input_fecha, 1)
         input_layout.addWidget(self.btn_agregar, 1)
         
         self.layout_principal.addLayout(input_layout)
 
-        # 3. SECCIÓN TABLA (Lista de Tareas)
+        # 3. SECCIÓN TABLA
         self.tabla = QTableWidget()
         self.tabla.setColumnCount(5)
         self.tabla.setHorizontalHeaderLabels(["ID", "Tarea", "Fecha Límite", "Estado", "Éxito"])
-        self.tabla.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch) # Ajusta columnas
-        self.tabla.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows) # Selecciona fila completa
-        self.tabla.setSelectionMode(QTableWidget.SelectionMode.SingleSelection) # Solo una a la vez
-        self.tabla.verticalHeader().setVisible(False) # Ocultar números de fila feos
-        
-        # Ocultamos la columna ID (columna 0) porque al usuario no le interesa ver el número técnico
+        self.tabla.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        self.tabla.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
+        self.tabla.setSelectionMode(QTableWidget.SelectionMode.SingleSelection)
+        self.tabla.verticalHeader().setVisible(False)
         self.tabla.setColumnHidden(0, True) 
-
         self.layout_principal.addWidget(self.tabla)
 
         # 4. SECCIÓN BOTONES DE ACCIÓN
@@ -138,7 +132,7 @@ class MainWindow(QMainWindow):
         self.btn_eliminar.setObjectName("btn_delete")
         self.btn_eliminar.clicked.connect(self.eliminar_tarea_seleccionada)
 
-        botones_layout.addStretch() # Empuja los botones a la derecha
+        botones_layout.addStretch()
         botones_layout.addWidget(self.btn_completar)
         botones_layout.addWidget(self.btn_eliminar)
         
@@ -146,7 +140,7 @@ class MainWindow(QMainWindow):
 
         # 5. CONSOLA DE LOGS/FEEDBACK DE IRIS
         self.ai_log = QTextEdit()
-        self.ai_log.setReadOnly(True) # Solo lectura
+        self.ai_log.setReadOnly(True)
         self.ai_log.setPlaceholderText("Iris te dará feedback y consejos aquí...")
         self.ai_log.setStyleSheet("""
             QTextEdit {
@@ -159,8 +153,6 @@ class MainWindow(QMainWindow):
             }
         """)
         self.layout_principal.addWidget(self.ai_log)
-
-        # Cargar datos al iniciar
         self.cargar_datos()
 
 
@@ -182,12 +174,11 @@ class MainWindow(QMainWindow):
         else:
             self.progress_chart.update_chart(0) # Si no hay tareas, mostrar 0%
 
-        hoy = datetime.now().date() # Fecha de hoy para comparar
+        hoy = datetime.now().date()
 
         for row, tarea in enumerate(self.mis_tareas):
             self.tabla.insertRow(row)
             
-            # Convertimos fecha de tarea a objeto date de Python para comparar
             fecha_tarea = tarea.fecha_limite.date()
             
             # --- LÓGICA DE COLORES ---
@@ -205,7 +196,7 @@ class MainWindow(QMainWindow):
                     item.setForeground(Qt.GlobalColor.white) # Texto blanco para contraste
                 return item
 
-            # Insertamos los datos usando la celda coloreada
+            # Inserto los datos usando la celda coloreada
             self.tabla.setItem(row, 0, crear_celda(tarea.id))
             self.tabla.setItem(row, 1, crear_celda(tarea.nombre))
             self.tabla.setItem(row, 2, crear_celda(tarea.fecha_limite.strftime('%Y-%m-%d')))
@@ -227,17 +218,17 @@ class MainWindow(QMainWindow):
         guardar_tarea(nueva_tarea)
         self.input_nombre.clear()
         self.cargar_datos() # Refrescar interfaz
-        self.ai_log.append(f"🤖 Iris: Tarea '{nombre}' creada. ¡A por ella!") # <--- NUEVO MENSAJE
+        self.ai_log.append(f"🤖 Iris: Tarea '{nombre}' creada. ¡A por ella!")
 
     def completar_tarea_seleccionada(self):
         fila = self.tabla.currentRow()
         if fila < 0:
             return 
         
-        # Obtenemos el ID de la columna oculta (columna 0)
+        # Obtengo el ID de la columna oculta (columna 0)
         id_tarea = int(self.tabla.item(fila, 0).text())
         
-        # Buscamos el objeto tarea correspondiente en la lista en memoria
+        # Busco el objeto tarea correspondiente en la lista en memoria
         tarea_obj = next((t for t in self.mis_tareas if t.id == id_tarea), None)
         
         if tarea_obj:
@@ -245,16 +236,16 @@ class MainWindow(QMainWindow):
             actualizar_tarea(tarea_obj.id, tarea_obj.completada, tarea_obj.porcentaje_exito)
             self.cargar_datos()
             QMessageBox.information(self, "¡Felicidades!", f"Tarea completada. Éxito: {tarea_obj.porcentaje_exito}%")
-            self.ai_log.append(f"🤖 Iris: ¡Felicidades! Completaste '{tarea_obj.nombre}' con {tarea_obj.porcentaje_exito}% de éxito.") # <--- NUEVO MENSAJE
+            self.ai_log.append(f"🤖 Iris: ¡Felicidades! Completaste '{tarea_obj.nombre}' con {tarea_obj.porcentaje_exito}% de éxito.")
 
     def eliminar_tarea_seleccionada(self):
         fila = self.tabla.currentRow()
         if fila < 0:
             return
         
-        # 1. Identificamos la tarea ANTES de borrarla
+        # 1. Identificamos la tarea antes de borrarla
         id_tarea = int(self.tabla.item(fila, 0).text())
-        # Buscamos el objeto en nuestra lista para saber su nombre
+        # Busco el objeto en nuestra lista para saber su nombre
         tarea_a_eliminar = next((t for t in self.mis_tareas if t.id == id_tarea), None)
 
         if not tarea_a_eliminar:
@@ -264,14 +255,10 @@ class MainWindow(QMainWindow):
                                             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
         
         if confirmacion == QMessageBox.StandardButton.Yes:
-            # 2. Borramos de la base de datos
             eliminar_tarea(id_tarea)
             
-            # 3. Guardamos el nombre para el log antes de refrescar
             nombre_borrado = tarea_a_eliminar.nombre
             
-            # 4. Refrescamos la interfaz y la lista
             self.cargar_datos()
             
-            # 5. Informamos a través de la IA
             self.ai_log.append(f"🤖 Iris: '{nombre_borrado}' eliminada de tu lista.")
