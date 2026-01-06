@@ -6,8 +6,16 @@ venv/
 .env
 
 # Base de datos local
-data/iris_db.sqlite
+data/
+*.db
+*.sqlite
+*.sqlite3
 
 # IDEs
 .vscode/
 .idea/
+
+# Build files
+build/
+dist/
+*.spec

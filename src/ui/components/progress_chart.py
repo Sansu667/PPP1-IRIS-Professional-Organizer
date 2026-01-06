@@ -1,63 +1,52 @@
-
-from PyQt6.QtWidgets import QVBoxLayout, QWidget
-from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
-from matplotlib.figure import Figure
-import matplotlib.pyplot as plt
+from PyQt6.QtWidgets import QWidget
+from PyQt6.QtGui import QPainter, QColor, QPen, QFont
+from PyQt6.QtCore import Qt, QRectF
 
 class ProgressChart(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.layout = QVBoxLayout(self)
-        self.figure = Figure(facecolor='#1e1e1e') # Fondo del gráfico oscuro
-        self.canvas = FigureCanvas(self.figure)
-        self.layout.addWidget(self.canvas)
-        self.ax = self.figure.add_subplot(111, facecolor='#252526') # Área de dibujo oscura
-        
-        # Estilos para el texto y los ejes
-        self.ax.tick_params(axis='x', colors='white')
-        self.ax.tick_params(axis='y', colors='white')
-        self.ax.spines['bottom'].set_color('#3e3e3e')
-        self.ax.spines['left'].set_color('#3e3e3e')
-        self.ax.spines['top'].set_color('#3e3e3e')
-        self.ax.spines['right'].set_color('#3e3e3e')
-        self.ax.yaxis.label.set_color('white')
-        self.ax.xaxis.label.set_color('white')
-        self.ax.title.set_color('white')
+        self.percentage = 0.0
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+        self.setMinimumSize(200, 200) 
 
-        self.update_chart(0) # Inicializar con 0%
+    def update_chart(self, value):
+        self.percentage = float(value)
+        self.update()
 
-    def update_chart(self, percentage):
-        self.ax.clear()
+    def paintEvent(self, event):
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+
+        # 1. Geometría
+        # Dejo un margen de 15px para que el pincel grueso no se corte
+        side = min(self.width(), self.height()) - 30
+        rect = QRectF((self.width() - side) / 2, (self.height() - side) / 2, side, side)
         
-        if percentage > 0:
-            sizes = [percentage, 100 - percentage]
-            colors = ['#007acc', '#444444']
-            labels = [f'{percentage:.1f}%', '']
-            # Aquí autopct SÍ genera autotexts
-            resultado = self.ax.pie(sizes, colors=colors, startangle=90, 
-                                   autopct='%1.1f%%', pctdistance=0.85, 
-                                   wedgeprops=dict(width=0.4, edgecolor='#1e1e1e'))
+        line_width = 20
+
+        # 2. Fondo
+        pen_bg = QPen(QColor("#2d2d36"))
+        pen_bg.setWidth(line_width)
+        pen_bg.setCapStyle(Qt.PenCapStyle.RoundCap)
+        painter.setPen(pen_bg)
+        painter.drawEllipse(rect)
+
+        # 3. Progreso
+        if self.percentage > 0:
+            pen_progress = QPen(QColor("#03dac6"))
+            pen_progress.setWidth(line_width)
+            pen_progress.setCapStyle(Qt.PenCapStyle.RoundCap)
+            painter.setPen(pen_progress)
             
-            # Desempaquetamos con cuidado:
-            wedges, texts, autotexts = resultado
-            
-            # Estilo de los textos internos
-            for autotext in autotexts:
-                autotext.set_color('white')
-                autotext.set_fontsize(12)
-                autotext.set_fontweight('bold')
-        else:
-            # Caso 0%: No usamos autopct, por lo que pie() solo devuelve 2 valores
-            sizes = [100]
-            colors = ['#444444']
-            resultado = self.ax.pie(sizes, colors=colors, startangle=90,
-                                   wedgeprops=dict(width=0.4, edgecolor='#1e1e1e'))
-            # Aquí solo hay wedges y texts
-            wedges, texts = resultado
+            startAngle = 90 * 16
+            spanAngle = -int((self.percentage / 100) * 360 * 16)
+            painter.drawArc(rect, startAngle, spanAngle)
 
-        self.ax.set_title("Disciplina General", color='white', fontsize=14, pad=20)
-        self.ax.axis('equal')
-        self.figure.tight_layout()
-        self.canvas.draw()
-        self.canvas.flush_events()
+        # 4. Texto
+        painter.setPen(QColor("white"))
+        # Ajusto la fuente para que sea grande pero no "coma" al anillo
+        font_size = int(side * 0.10) 
+        painter.setFont(QFont("Segoe UI", font_size, QFont.Weight.Bold))
+        painter.drawText(self.rect(), Qt.AlignmentFlag.AlignCenter, f"{self.percentage:.1f}%")
         
+        painter.end()
