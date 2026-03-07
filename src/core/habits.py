@@ -1,9 +1,22 @@
 from datetime import datetime
 
 class Tarea:
-    def __init__(self, nombre, fecha_limite, id=None):
+    # Constantes de prioridad
+    PRIORIDAD_ALTA = "alta"
+    PRIORIDAD_MEDIA = "media"
+    PRIORIDAD_BAJA = "baja"
+    
+    PRIORIDADES_VALIDAS = [PRIORIDAD_ALTA, PRIORIDAD_MEDIA, PRIORIDAD_BAJA]
+    
+    def __init__(self, nombre, fecha_limite, id=None, prioridad="media"):
         self.id = id
         self.nombre = nombre
+        
+        # Validar y establecer prioridad
+        if prioridad in self.PRIORIDADES_VALIDAS:
+            self.prioridad = prioridad
+        else:
+            self.prioridad = self.PRIORIDAD_MEDIA
         
         # Manejo robusto de fechas
         if isinstance(fecha_limite, str):
@@ -38,3 +51,34 @@ class Tarea:
             # Penalización: 10 puntos por día de retraso
             penalizacion = dias_diferencia * 10
             self.porcentaje_exito = max(0, 100 - penalizacion)
+    
+    def get_prioridad_valor(self):
+        """Retorna un valor numérico para ordenar (mayor = más prioritario)"""
+        if self.prioridad == self.PRIORIDAD_ALTA:
+            return 3
+        elif self.prioridad == self.PRIORIDAD_MEDIA:
+            return 2
+        else:
+            return 1
+    
+    def get_prioridad_color(self):
+        """Retorna el color asociado a la prioridad"""
+        if self.prioridad == self.PRIORIDAD_ALTA:
+            return "#ff5252"  # Rojo
+        elif self.prioridad == self.PRIORIDAD_MEDIA:
+            return "#ffb74d"  # Naranja
+        else:
+            return "#4fc3f7"  # Azul claro
+    
+    def get_prioridad_icono(self):
+        """Retorna el icono asociado a la prioridad"""
+        if self.prioridad == self.PRIORIDAD_ALTA:
+            return "🔥"
+        elif self.prioridad == self.PRIORIDAD_MEDIA:
+            return "⚡"
+        else:
+            return "📌"
+    
+    def get_prioridad_texto(self):
+        """Retorna el texto legible de la prioridad"""
+        return self.prioridad.upper()

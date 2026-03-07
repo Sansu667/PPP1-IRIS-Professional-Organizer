@@ -1,12 +1,8 @@
-from datetime import datetime
 import sys
-from pathlib import Path
+import os
+sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
-# Agregar el directorio src al path para que funcionen los imports
-src_path = Path(__file__).parent.parent
-if str(src_path) not in sys.path:
-    sys.path.insert(0, str(src_path))
-
+from datetime import datetime
 from PyQt6.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QLabel, 
     QLineEdit, QPushButton, QTableWidget, QTableWidgetItem, QHeaderView, QDateEdit, 
     QTextEdit, QProgressBar, QFrame, QGraphicsDropShadowEffect, QMenu, QSpinBox, QTabWidget,
@@ -14,16 +10,47 @@ from PyQt6.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QLa
 from PyQt6.QtCore import Qt, QDate, QTimer, QPropertyAnimation, QEasingCurve, pyqtProperty
 from PyQt6.QtGui import QFont, QColor, QAction
 
-# --- IMPORTACIONES ---
+# Componentes existentes
 try:
     from ui.components.progress_chart import ProgressChart
     from ui.components.heatmap_widget import HeatmapWidget
     from ui.components.bar_chart import BarChart
+    
+    # NUEVOS: Componentes de Finanzas
+    from ui.components.pie_chart import PieChart
+    from ui.components.transaction_card import TransactionCard
+    from ui.components.debt_card import DebtCard
+    
+    # NUEVOS: Componentes de Libros
+    from ui.components.progress_ring import ProgressRing
+    from ui.components.book_card import BookCard
+    
+    # Modelos existentes
     from core.habits import Tarea
     from core.ai_engine import generar_reporte
+    
+    # NUEVOS: Modelos de Finanzas y Libros
+    from core.finance import Transaccion, Deuda
+    from core.books import Libro
+    
+    # Managers existentes
     from database.db_manager import (guardar_tarea, cargar_tareas, actualizar_tarea, 
                                      eliminar_tarea, obtener_historial_heatmap, obtener_kpis, 
                                      obtener_actividad_semanal, actualizar_tarea_completa)
+    
+    # NUEVOS: Managers de Finanzas y Libros
+    from database.finance_db_manager import (
+        guardar_transaccion, cargar_transacciones, eliminar_transaccion,
+        guardar_deuda, cargar_deudas, actualizar_pago_deuda, eliminar_deuda,
+        obtener_balance, obtener_balance_mensual, obtener_gastos_por_categoria,
+        obtener_total_deudas
+    )
+    from database.books_db_manager import (
+        guardar_libro, cargar_libros, actualizar_progreso_libro,
+        marcar_libro_como_terminado, eliminar_libro, cambiar_estado_libro,
+        obtener_estadisticas_lectura, obtener_libro_actual
+    )
+    
 except ImportError as e:
     print(f"Error cargando módulos: {e}")
     print(f"Python path: {sys.path}")
@@ -400,11 +427,17 @@ class MainWindow(QMainWindow):
         main_layout.addLayout(h_layout)
 
         # TABS PRINCIPALES
+        # TABS PRINCIPALES
         self.tabs = QTabWidget()
         main_layout.addWidget(self.tabs)
         
         self.tab_dash = QWidget(); self.setup_dashboard(); self.tabs.addTab(self.tab_dash, "📊 Dashboard")
         self.tab_tasks = QWidget(); self.setup_tasks(); self.tabs.addTab(self.tab_tasks, "📝 Tasks")
+        
+        # NUEVAS PESTAÑAS DE FINANZAS Y LIBROS
+        self.tab_finance = QWidget(); self.setup_finance(); self.tabs.addTab(self.tab_finance, "💰 Finanzas")
+        self.tab_books = QWidget(); self.setup_books(); self.tabs.addTab(self.tab_books, "📚 Libros")
+        
         self.tab_analytics = QWidget(); self.setup_analytics(); self.tabs.addTab(self.tab_analytics, "📈 Analytics")
 
         # LOG
@@ -647,7 +680,7 @@ class MainWindow(QMainWindow):
     # --- TASK MANAGEMENT ---
     def clear_layout(self, layout):
         """Limpia un layout de todos sus widgets"""
-        while layout.count() > 1:
+        while layout.count() > 0:
             item = layout.takeAt(0)
             if item.widget():
                 item.widget().deleteLater()
@@ -669,10 +702,10 @@ class MainWindow(QMainWindow):
             )
             
             if tarea.completada:
-                self.completed_layout.insertWidget(self.completed_layout.count() - 1, card)
+                self.completed_layout.addWidget(card)
                 completed_count += 1
             else:
-                self.active_layout.insertWidget(self.active_layout.count() - 1, card)
+                self.active_layout.addWidget(card)
                 active_count += 1
         
         self.task_tabs.setTabText(0, f"🎯 Active ({active_count})")
@@ -682,13 +715,13 @@ class MainWindow(QMainWindow):
             empty_label = QLabel("No hay tareas activas. ¡Crea una nueva misión!")
             empty_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
             empty_label.setStyleSheet("color: #808090; font-size: 14px; padding: 40px;")
-            self.active_layout.insertWidget(0, empty_label)
+            self.active_layout.addWidget(empty_label)
         
         if completed_count == 0:
             empty_label = QLabel("Aún no has completado ninguna tarea.")
             empty_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
             empty_label.setStyleSheet("color: #808090; font-size: 14px; padding: 40px;")
-            self.completed_layout.insertWidget(0, empty_label)
+            self.completed_layout.addWidget(empty_label)
 
     def complete_task(self, tarea):
         """Completa una tarea"""
@@ -722,7 +755,15 @@ class MainWindow(QMainWindow):
 
     # --- LOGIC ---
     def tab_changed(self, i):
-        if i == 2:
+        """Se ejecuta al cambiar de pestaña principal"""
+        if i == 2:  # Finanzas
+            self.actualizar_dashboard_finanzas()
+            self.cargar_transacciones()
+            self.cargar_deudas()
+        elif i == 3:  # Libros
+            self.cargar_libro_actual()
+            self.cargar_libros()
+        elif i == 4:  # Analytics (antes era índice 2, ahora es 4)
             try: 
                 self.hm_w.update_heatmap(obtener_historial_heatmap())
                 stats = obtener_kpis()
@@ -808,6 +849,804 @@ class MainWindow(QMainWindow):
             self.ai_log.append(f"✨ [{datetime.now().strftime('%H:%M')}] New mission added: {self.txt_task.text()} [{prioridad.upper()}]")
             self.txt_task.clear()
             self.cargar_datos()
+
+    # ==================== MÓDULO DE FINANZAS ====================
+    
+    def setup_finance(self):
+        """Configura la pestaña de Finanzas"""
+        main_layout = QVBoxLayout(self.tab_finance)
+        main_layout.setContentsMargins(10, 20, 10, 10)
+        main_layout.setSpacing(20)
+        
+        # Sub-tabs: Dashboard, Transacciones, Deudas
+        self.finance_tabs = QTabWidget()
+        main_layout.addWidget(self.finance_tabs)
+        
+        # Dashboard de Finanzas
+        self.finance_dashboard_tab = QWidget()
+        self.setup_finance_dashboard()
+        self.finance_tabs.addTab(self.finance_dashboard_tab, "📊 Dashboard")
+        
+        # Transacciones
+        self.transactions_tab = QWidget()
+        self.setup_transactions()
+        self.finance_tabs.addTab(self.transactions_tab, "💸 Transacciones")
+        
+        # Deudas
+        self.debts_tab = QWidget()
+        self.setup_debts()
+        self.finance_tabs.addTab(self.debts_tab, "🔴 Deudas")
+        
+        # Listener para actualizar al cambiar de tab
+        self.finance_tabs.currentChanged.connect(self.on_finance_tab_changed)
+    
+    def setup_finance_dashboard(self):
+        """Dashboard de finanzas con balance y gráficos"""
+        layout = QVBoxLayout(self.finance_dashboard_tab)
+        layout.setContentsMargins(10, 20, 10, 10)
+        layout.setSpacing(20)
+        
+        # Cards de Balance
+        balance_row = QHBoxLayout()
+        balance_row.setSpacing(20)
+        
+        self.card_balance = StatCard("BALANCE", "$0", "white", "💰")
+        self.card_ingresos = StatCard("INGRESOS", "$0", "#00c853", "📈")
+        self.card_egresos = StatCard("EGRESOS", "$0", "#ff5252", "📉")
+        
+        balance_row.addWidget(self.card_balance)
+        balance_row.addWidget(self.card_ingresos)
+        balance_row.addWidget(self.card_egresos)
+        layout.addLayout(balance_row)
+        
+        # Gráfico de distribución
+        chart_frame = QFrame()
+        chart_frame.setObjectName("card")
+        chart_layout = QVBoxLayout(chart_frame)
+        chart_layout.setContentsMargins(20, 20, 20, 20)
+        
+        lbl_chart = QLabel("📊 Distribución de Gastos por Categoría")
+        lbl_chart.setStyleSheet("color: white; font-weight: bold; font-size: 14px; margin-bottom: 10px;")
+        chart_layout.addWidget(lbl_chart)
+        
+        self.pie_chart = PieChart()
+        chart_layout.addWidget(self.pie_chart)
+        
+        layout.addWidget(chart_frame)
+        self.shadow(chart_frame)
+        
+        layout.addStretch()
+    
+    def setup_transactions(self):
+        """Pestaña de transacciones"""
+        layout = QVBoxLayout(self.transactions_tab)
+        layout.setContentsMargins(10, 20, 10, 10)
+        layout.setSpacing(20)
+        
+        # Formulario para nueva transacción
+        input_frame = QFrame()
+        input_frame.setObjectName("card")
+        input_frame.setFixedHeight(200)
+        
+        form_layout = QVBoxLayout(input_frame)
+        form_layout.setContentsMargins(20, 15, 20, 15)
+        form_layout.setSpacing(12)
+        
+        lbl_titulo = QLabel("➕ Nueva Transacción")
+        lbl_titulo.setStyleSheet("font-weight: bold; color: #bb86fc; font-size: 13px;")
+        form_layout.addWidget(lbl_titulo)
+        
+        # Primera fila: Título
+        self.txt_trans_titulo = QLineEdit()
+        self.txt_trans_titulo.setPlaceholderText("Título de la transacción...")
+        self.txt_trans_titulo.setMinimumHeight(40)
+        form_layout.addWidget(self.txt_trans_titulo)
+        
+        # Segunda fila: Valor, Tipo, Categoría
+        row2 = QHBoxLayout()
+        
+        self.txt_trans_valor = QLineEdit()
+        self.txt_trans_valor.setPlaceholderText("Valor (ej: 50000)")
+        self.txt_trans_valor.setMinimumHeight(40)
+        self.txt_trans_valor.setFixedWidth(180)
+        row2.addWidget(self.txt_trans_valor)
+        
+        self.combo_trans_tipo = QComboBox()
+        self.combo_trans_tipo.addItem("💚 Ingreso", "ingreso")
+        self.combo_trans_tipo.addItem("💔 Egreso", "egreso")
+        self.combo_trans_tipo.setMinimumHeight(40)
+        self.combo_trans_tipo.setFixedWidth(150)
+        self.combo_trans_tipo.currentIndexChanged.connect(self.actualizar_categorias_transaccion)
+        row2.addWidget(self.combo_trans_tipo)
+        
+        self.combo_trans_categoria = QComboBox()
+        self.combo_trans_categoria.setMinimumHeight(40)
+        self.actualizar_categorias_transaccion()
+        row2.addWidget(self.combo_trans_categoria)
+        
+        form_layout.addLayout(row2)
+        
+        # Tercera fila: Descripción y botón
+        row3 = QHBoxLayout()
+        
+        self.txt_trans_desc = QLineEdit()
+        self.txt_trans_desc.setPlaceholderText("Descripción (opcional)")
+        self.txt_trans_desc.setMinimumHeight(40)
+        row3.addWidget(self.txt_trans_desc)
+        
+        btn_add_trans = QPushButton("Agregar Transacción")
+        btn_add_trans.setMinimumHeight(40)
+        btn_add_trans.setMinimumWidth(180)
+        btn_add_trans.clicked.connect(self.agregar_transaccion)
+        row3.addWidget(btn_add_trans)
+        
+        form_layout.addLayout(row3)
+        
+        layout.addWidget(input_frame)
+        self.shadow(input_frame)
+        
+        # Lista de transacciones
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        
+        self.transactions_container = QWidget()
+        self.transactions_layout = QVBoxLayout(self.transactions_container)
+        self.transactions_layout.setSpacing(15)
+        self.transactions_layout.setContentsMargins(5, 5, 5, 5)
+        
+        scroll.setWidget(self.transactions_container)
+        layout.addWidget(scroll)
+    
+    def setup_debts(self):
+        """Pestaña de deudas"""
+        layout = QVBoxLayout(self.debts_tab)
+        layout.setContentsMargins(10, 20, 10, 10)
+        layout.setSpacing(20)
+        
+        # Formulario para nueva deuda
+        input_frame = QFrame()
+        input_frame.setObjectName("card")
+        input_frame.setFixedHeight(200)
+        
+        form_layout = QVBoxLayout(input_frame)
+        form_layout.setContentsMargins(20, 15, 20, 15)
+        form_layout.setSpacing(12)
+        
+        lbl_titulo = QLabel("➕ Nueva Deuda")
+        lbl_titulo.setStyleSheet("font-weight: bold; color: #bb86fc; font-size: 13px;")
+        form_layout.addWidget(lbl_titulo)
+        
+        # Primera fila: Título
+        self.txt_debt_titulo = QLineEdit()
+        self.txt_debt_titulo.setPlaceholderText("Título de la deuda...")
+        self.txt_debt_titulo.setMinimumHeight(40)
+        form_layout.addWidget(self.txt_debt_titulo)
+        
+        # Segunda fila: Monto total, Acreedor
+        row2 = QHBoxLayout()
+        
+        self.txt_debt_monto = QLineEdit()
+        self.txt_debt_monto.setPlaceholderText("Monto total")
+        self.txt_debt_monto.setMinimumHeight(40)
+        row2.addWidget(self.txt_debt_monto)
+        
+        self.txt_debt_acreedor = QLineEdit()
+        self.txt_debt_acreedor.setPlaceholderText("Acreedor")
+        self.txt_debt_acreedor.setMinimumHeight(40)
+        row2.addWidget(self.txt_debt_acreedor)
+        
+        form_layout.addLayout(row2)
+        
+        # Tercera fila: Fecha límite y botón
+        row3 = QHBoxLayout()
+        
+        self.date_debt_limite = QDateEdit()
+        self.date_debt_limite.setDate(QDate.currentDate().addMonths(1))
+        self.date_debt_limite.setMinimumHeight(40)
+        self.date_debt_limite.setDisplayFormat("yyyy-MM-dd")
+        row3.addWidget(QLabel("Fecha límite:"))
+        row3.addWidget(self.date_debt_limite)
+        
+        row3.addStretch()
+        
+        btn_add_debt = QPushButton("Agregar Deuda")
+        btn_add_debt.setMinimumHeight(40)
+        btn_add_debt.setMinimumWidth(150)
+        btn_add_debt.clicked.connect(self.agregar_deuda)
+        row3.addWidget(btn_add_debt)
+        
+        form_layout.addLayout(row3)
+        
+        layout.addWidget(input_frame)
+        self.shadow(input_frame)
+        
+        # Lista de deudas
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        
+        self.debts_container = QWidget()
+        self.debts_layout = QVBoxLayout(self.debts_container)
+        self.debts_layout.setSpacing(40)
+        self.debts_layout.setContentsMargins(10, 10, 10, 10)
+        
+        scroll.setWidget(self.debts_container)
+        layout.addWidget(scroll)
+    
+    # --- MÉTODOS AUXILIARES DE FINANZAS ---
+    
+    def actualizar_categorias_transaccion(self):
+        """Actualiza las categorías según el tipo de transacción"""
+        self.combo_trans_categoria.clear()
+        
+        tipo = self.combo_trans_tipo.currentData()
+        
+        if tipo == "ingreso":
+            categorias = Transaccion.CATEGORIAS_INGRESO
+        else:
+            categorias = Transaccion.CATEGORIAS_EGRESO
+        
+        for cat in categorias:
+            trans_temp = Transaccion("", 0, tipo, cat)
+            icono = trans_temp.get_icono_categoria()
+            self.combo_trans_categoria.addItem(f"{icono} {cat}", cat)
+    
+    def agregar_transaccion(self):
+        """Agrega una nueva transacción"""
+        titulo = self.txt_trans_titulo.text().strip()
+        valor_text = self.txt_trans_valor.text().strip()
+        
+        if not titulo or not valor_text:
+            QMessageBox.warning(self, "Error", "Por favor completa todos los campos requeridos")
+            return
+        
+        try:
+            valor = float(valor_text.replace(",", "").replace("$", ""))
+        except ValueError:
+            QMessageBox.warning(self, "Error", "Valor inválido")
+            return
+        
+        tipo = self.combo_trans_tipo.currentData()
+        categoria = self.combo_trans_categoria.currentData()
+        descripcion = self.txt_trans_desc.text().strip()
+        
+        transaccion = Transaccion(titulo, valor, tipo, categoria, descripcion)
+        guardar_transaccion(transaccion)
+        
+        # Limpiar formulario
+        self.txt_trans_titulo.clear()
+        self.txt_trans_valor.clear()
+        self.txt_trans_desc.clear()
+        
+        # Recargar
+        self.cargar_transacciones()
+        self.actualizar_dashboard_finanzas()
+        
+        self.ai_log.append(f"💰 [{datetime.now().strftime('%H:%M')}] Transacción registrada: {titulo}")
+    
+    def agregar_deuda(self):
+        """Agrega una nueva deuda"""
+        titulo = self.txt_debt_titulo.text().strip()
+        monto_text = self.txt_debt_monto.text().strip()
+        acreedor = self.txt_debt_acreedor.text().strip()
+        
+        if not titulo or not monto_text:
+            QMessageBox.warning(self, "Error", "Por favor completa todos los campos requeridos")
+            return
+        
+        try:
+            monto = float(monto_text.replace(",", "").replace("$", ""))
+        except ValueError:
+            QMessageBox.warning(self, "Error", "Monto inválido")
+            return
+        
+        fecha_limite = self.date_debt_limite.date().toString("yyyy-MM-dd")
+        
+        deuda = Deuda(titulo, monto, 0, acreedor, "", fecha_limite)
+        guardar_deuda(deuda)
+        
+        # Limpiar formulario
+        self.txt_debt_titulo.clear()
+        self.txt_debt_monto.clear()
+        self.txt_debt_acreedor.clear()
+        self.date_debt_limite.setDate(QDate.currentDate().addMonths(1))
+        
+        # Recargar
+        self.cargar_deudas()
+        
+        self.ai_log.append(f"🔴 [{datetime.now().strftime('%H:%M')}] Deuda registrada: {titulo}")
+    
+    def cargar_transacciones(self):
+        """Carga y muestra las transacciones"""
+        # Limpiar
+        while self.transactions_layout.count() > 0:
+            item = self.transactions_layout.takeAt(0)
+            if item.widget():
+                item.widget().deleteLater()
+        
+        # Cargar
+        transacciones = cargar_transacciones()
+        
+        if not transacciones:
+            empty_label = QLabel("No hay transacciones registradas")
+            empty_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            empty_label.setStyleSheet("color: #808090; font-size: 14px; padding: 40px;")
+            self.transactions_layout.addWidget(empty_label)
+            return
+        
+        for trans in transacciones[:50]:  # Máximo 50 más recientes
+            card = TransactionCard(trans, on_delete=self.eliminar_transaccion)
+            self.transactions_layout.addWidget(card)
+    
+    def cargar_deudas(self):
+        """Carga y muestra las deudas"""
+        # Limpiar
+        while self.debts_layout.count() > 0:
+            item = self.debts_layout.takeAt(0)
+            if item.widget():
+                item.widget().deleteLater()
+        
+        # Cargar
+        deudas = cargar_deudas()
+        
+        if not deudas:
+            empty_label = QLabel("No hay deudas registradas")
+            empty_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            empty_label.setStyleSheet("color: #808090; font-size: 14px; padding: 40px;")
+            self.debts_layout.addWidget(empty_label)
+            return
+        
+        for deuda in deudas:
+            card = DebtCard(deuda, on_pay=self.pagar_deuda, on_delete=self.eliminar_deuda)
+            self.debts_layout.addWidget(card)
+    
+    def eliminar_transaccion(self, transaccion):
+        """Elimina una transacción"""
+        reply = QMessageBox.question(
+            self, 
+            'Confirmar eliminación',
+            f'¿Eliminar la transacción "{transaccion.titulo}"?',
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+        )
+        
+        if reply == QMessageBox.StandardButton.Yes:
+            eliminar_transaccion(transaccion.id)
+            self.cargar_transacciones()
+            self.actualizar_dashboard_finanzas()
+            self.ai_log.append(f"🗑️ [{datetime.now().strftime('%H:%M')}] Transacción eliminada")
+    
+    def pagar_deuda(self, deuda):
+        """Registra un pago en una deuda"""
+        from PyQt6.QtWidgets import QInputDialog
+        
+        monto, ok = QInputDialog.getDouble(
+            self,
+            "Registrar Pago",
+            f"¿Cuánto pagaste de '{deuda.titulo}'?\nPendiente: ${deuda.get_monto_pendiente():,.0f}",
+            0, 0, deuda.monto_total, 0
+        )
+        
+        if ok and monto > 0:
+            nuevo_total = min(deuda.monto_pagado + monto, deuda.monto_total)
+            actualizar_pago_deuda(deuda.id, nuevo_total)
+            self.cargar_deudas()
+            self.ai_log.append(f"💵 [{datetime.now().strftime('%H:%M')}] Pago registrado: ${monto:,.0f}")
+    
+    def eliminar_deuda(self, deuda):
+        """Elimina una deuda"""
+        reply = QMessageBox.question(
+            self,
+            'Confirmar eliminación',
+            f'¿Eliminar la deuda "{deuda.titulo}"?',
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+        )
+        
+        if reply == QMessageBox.StandardButton.Yes:
+            eliminar_deuda(deuda.id)
+            self.cargar_deudas()
+            self.ai_log.append(f"🗑️ [{datetime.now().strftime('%H:%M')}] Deuda eliminada")
+    
+    def actualizar_dashboard_finanzas(self):
+        """Actualiza el dashboard de finanzas"""
+        balance = obtener_balance()
+        
+        self.card_balance.update_value(f"${balance['balance']:,.0f}")
+        self.card_ingresos.update_value(f"${balance['ingresos']:,.0f}")
+        self.card_egresos.update_value(f"${balance['egresos']:,.0f}")
+        
+        # Actualizar gráfico
+        gastos = obtener_gastos_por_categoria()
+        if gastos:
+            colors = {}
+            for cat in gastos.keys():
+                trans_temp = Transaccion("", 0, "egreso", cat)
+                colors[cat] = trans_temp.get_color_categoria()
+            
+            self.pie_chart.update_data(gastos, colors)
+    
+    def on_finance_tab_changed(self, index):
+        """Se ejecuta al cambiar de tab en finanzas"""
+        if index == 0:  # Dashboard
+            self.actualizar_dashboard_finanzas()
+        elif index == 1:  # Transacciones
+            self.cargar_transacciones()
+        elif index == 2:  # Deudas
+            self.cargar_deudas()
+
+    # ==================== MÓDULO DE LIBROS ====================
+    
+    def setup_books(self):
+        """Configura la pestaña de Libros"""
+        main_layout = QVBoxLayout(self.tab_books)
+        main_layout.setContentsMargins(10, 20, 10, 10)
+        main_layout.setSpacing(20)
+        
+        # Sub-tabs: Libro Actual, Biblioteca
+        self.books_tabs = QTabWidget()
+        main_layout.addWidget(self.books_tabs)
+        
+        # Libro Actual
+        self.current_book_tab = QWidget()
+        self.setup_current_book()
+        self.books_tabs.addTab(self.current_book_tab, "📖 Libro Actual")
+        
+        # Biblioteca
+        self.library_tab = QWidget()
+        self.setup_library()
+        self.books_tabs.addTab(self.library_tab, "📚 Biblioteca")
+        
+        # Listener
+        self.books_tabs.currentChanged.connect(self.on_books_tab_changed)
+    
+    def setup_current_book(self):
+        """Pestaña del libro actual"""
+        layout = QVBoxLayout(self.current_book_tab)
+        layout.setContentsMargins(10, 20, 10, 10)
+        layout.setSpacing(20)
+        
+        # Card del libro actual
+        current_frame = QFrame()
+        current_frame.setObjectName("dashboard_card")
+        current_frame.setFixedHeight(400)
+        
+        current_layout = QHBoxLayout(current_frame)
+        current_layout.setContentsMargins(40, 30, 40, 30)
+        current_layout.setSpacing(40)
+        
+        # Izquierda: Información
+        info_layout = QVBoxLayout()
+        info_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
+        
+        self.lbl_current_title = QLabel("Ningún libro en lectura")
+        self.lbl_current_title.setStyleSheet("color: white; font-size: 20px; font-weight: bold;")
+        self.lbl_current_title.setWordWrap(True)
+        info_layout.addWidget(self.lbl_current_title)
+        
+        self.lbl_current_author = QLabel("")
+        self.lbl_current_author.setStyleSheet("color: #808090; font-size: 14px; margin-bottom: 10px;")
+        info_layout.addWidget(self.lbl_current_author)
+        
+        info_layout.addSpacing(20)
+        
+        self.lbl_current_stats = QLabel("")
+        self.lbl_current_stats.setStyleSheet("color: #e0e0e0; font-size: 13px; line-height: 2.0;")
+        self.lbl_current_stats.setWordWrap(True)
+        info_layout.addWidget(self.lbl_current_stats)
+        
+        info_layout.addStretch()
+        
+        current_layout.addLayout(info_layout, 2)
+        
+        # Derecha: Progreso circular
+        ring_container = QVBoxLayout()
+        ring_container.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        
+        self.progress_ring = ProgressRing()
+        ring_container.addWidget(self.progress_ring)
+        
+        current_layout.addLayout(ring_container, 1)
+        
+        layout.addWidget(current_frame)
+        self.shadow(current_frame)
+        
+        layout.addStretch()
+    
+    def setup_library(self):
+        """Pestaña de biblioteca"""
+        layout = QVBoxLayout(self.library_tab)
+        layout.setContentsMargins(10, 20, 10, 10)
+        layout.setSpacing(20)
+        
+        # Formulario para agregar libro
+        input_frame = QFrame()
+        input_frame.setObjectName("card")
+        input_frame.setFixedHeight(230)
+        
+        form_layout = QVBoxLayout(input_frame)
+        form_layout.setContentsMargins(20, 15, 20, 15)
+        form_layout.setSpacing(12)
+        
+        lbl_titulo = QLabel("➕ Agregar Libro")
+        lbl_titulo.setStyleSheet("font-weight: bold; color: #bb86fc; font-size: 13px;")
+        form_layout.addWidget(lbl_titulo)
+        
+        # Primera fila: Título y Autor
+        row1 = QHBoxLayout()
+        
+        self.txt_book_titulo = QLineEdit()
+        self.txt_book_titulo.setPlaceholderText("Título del libro")
+        self.txt_book_titulo.setMinimumHeight(40)
+        row1.addWidget(self.txt_book_titulo)
+        
+        self.txt_book_autor = QLineEdit()
+        self.txt_book_autor.setPlaceholderText("Autor")
+        self.txt_book_autor.setMinimumHeight(40)
+        row1.addWidget(self.txt_book_autor)
+        
+        form_layout.addLayout(row1)
+        
+        # Segunda fila: Páginas, Género, Editorial
+        row2 = QHBoxLayout()
+        
+        self.txt_book_paginas = QLineEdit()
+        self.txt_book_paginas.setPlaceholderText("Total de páginas")
+        self.txt_book_paginas.setMinimumHeight(40)
+        self.txt_book_paginas.setFixedWidth(150)
+        row2.addWidget(self.txt_book_paginas)
+        
+        self.txt_book_genero = QLineEdit()
+        self.txt_book_genero.setPlaceholderText("Género")
+        self.txt_book_genero.setMinimumHeight(40)
+        row2.addWidget(self.txt_book_genero)
+        
+        self.txt_book_editorial = QLineEdit()
+        self.txt_book_editorial.setPlaceholderText("Editorial")
+        self.txt_book_editorial.setMinimumHeight(40)
+        row2.addWidget(self.txt_book_editorial)
+        
+        form_layout.addLayout(row2)
+        
+        # Tercera fila: Año y botón
+        row3 = QHBoxLayout()
+        
+        self.txt_book_anio = QLineEdit()
+        self.txt_book_anio.setPlaceholderText("Año")
+        self.txt_book_anio.setMinimumHeight(40)
+        self.txt_book_anio.setFixedWidth(100)
+        row3.addWidget(self.txt_book_anio)
+        
+        row3.addStretch()
+        
+        btn_add_book = QPushButton("Agregar Libro")
+        btn_add_book.setMinimumHeight(40)
+        btn_add_book.setMinimumWidth(150)
+        btn_add_book.clicked.connect(self.agregar_libro)
+        row3.addWidget(btn_add_book)
+        
+        form_layout.addLayout(row3)
+        
+        layout.addWidget(input_frame)
+        self.shadow(input_frame)
+        
+        # Filtros
+        filter_row = QHBoxLayout()
+        filter_row.addWidget(QLabel("Filtrar por estado:"))
+        
+        self.combo_book_filter = QComboBox()
+        self.combo_book_filter.addItem("📚 Todos", None)
+        self.combo_book_filter.addItem("📖 Leyendo", Libro.ESTADO_LEYENDO)
+        self.combo_book_filter.addItem("✅ Terminados", Libro.ESTADO_TERMINADO)
+        self.combo_book_filter.addItem("⏸️ Pausados", Libro.ESTADO_PAUSADO)
+        self.combo_book_filter.addItem("📕 Sin empezar", Libro.ESTADO_SIN_EMPEZAR)
+        self.combo_book_filter.currentIndexChanged.connect(self.cargar_libros)
+        self.combo_book_filter.setFixedWidth(200)
+        filter_row.addWidget(self.combo_book_filter)
+        
+        filter_row.addStretch()
+        layout.addLayout(filter_row)
+        
+        # Lista de libros
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        
+        self.books_container = QWidget()
+        self.books_layout = QVBoxLayout(self.books_container)
+        self.books_layout.setSpacing(15)
+        self.books_layout.setContentsMargins(5, 5, 5, 5)
+        
+        scroll.setWidget(self.books_container)
+        layout.addWidget(scroll)
+    
+    # --- MÉTODOS AUXILIARES DE LIBROS ---
+    
+    def agregar_libro(self):
+        """Agrega un nuevo libro"""
+        titulo = self.txt_book_titulo.text().strip()
+        autor = self.txt_book_autor.text().strip()
+        paginas_text = self.txt_book_paginas.text().strip()
+        
+        if not titulo or not autor or not paginas_text:
+            QMessageBox.warning(self, "Error", "Por favor completa título, autor y páginas")
+            return
+        
+        try:
+            total_paginas = int(paginas_text)
+            if total_paginas <= 0:
+                raise ValueError
+        except ValueError:
+            QMessageBox.warning(self, "Error", "Número de páginas inválido")
+            return
+        
+        genero = self.txt_book_genero.text().strip()
+        editorial = self.txt_book_editorial.text().strip()
+        
+        anio = None
+        if self.txt_book_anio.text().strip():
+            try:
+                anio = int(self.txt_book_anio.text().strip())
+            except ValueError:
+                pass
+        
+        libro = Libro(
+            titulo=titulo,
+            autor=autor,
+            total_paginas=total_paginas,
+            genero=genero,
+            editorial=editorial,
+            anio=anio
+        )
+        
+        guardar_libro(libro)
+        
+        # Limpiar formulario
+        self.txt_book_titulo.clear()
+        self.txt_book_autor.clear()
+        self.txt_book_paginas.clear()
+        self.txt_book_genero.clear()
+        self.txt_book_editorial.clear()
+        self.txt_book_anio.clear()
+        
+        # Recargar
+        self.cargar_libros()
+        self.cargar_libro_actual()
+        
+        self.ai_log.append(f"📚 [{datetime.now().strftime('%H:%M')}] Libro agregado: {titulo}")
+    
+    def cargar_libros(self):
+        """Carga y muestra los libros"""
+        # Limpiar
+        while self.books_layout.count() > 0:
+            item = self.books_layout.takeAt(0)
+            if item.widget():
+                item.widget().deleteLater()
+        
+        # Obtener filtro
+        estado = self.combo_book_filter.currentData()
+        
+        # Cargar
+        libros = cargar_libros(estado=estado)
+        
+        if not libros:
+            empty_label = QLabel("No hay libros en esta categoría")
+            empty_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            empty_label.setStyleSheet("color: #808090; font-size: 14px; padding: 40px;")
+            self.books_layout.addWidget(empty_label)
+            return
+        
+        for libro in libros:
+            card = BookCard(
+                libro,
+                on_update=self.actualizar_libro,
+                on_edit=self.editar_libro,
+                on_delete=self.eliminar_libro
+            )
+            self.books_layout.addWidget(card)
+    
+    def actualizar_libro(self, libro):
+        """Actualiza el progreso de un libro"""
+        from PyQt6.QtWidgets import QInputDialog
+        
+        paginas, ok = QInputDialog.getInt(
+            self,
+            "Actualizar Progreso",
+            f"¿Cuántas páginas llevas leídas de '{libro.titulo}'?\n(Total: {libro.total_paginas})",
+            libro.paginas_leidas,
+            0,
+            libro.total_paginas,
+            1
+        )
+        
+        if ok:
+            actualizar_progreso_libro(libro.id, paginas)
+            self.cargar_libros()
+            self.cargar_libro_actual()
+            self.ai_log.append(f"📖 [{datetime.now().strftime('%H:%M')}] Progreso actualizado: {libro.titulo}")
+    
+    def editar_libro(self, libro, complete=False):
+        """Edita un libro o lo marca como terminado"""
+        if complete:
+            reply = QMessageBox.question(
+                self,
+                'Confirmar',
+                f'¿Marcar "{libro.titulo}" como terminado?',
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+            )
+            
+            if reply == QMessageBox.StandardButton.Yes:
+                marcar_libro_como_terminado(libro.id)
+                self.cargar_libros()
+                self.cargar_libro_actual()
+                self.ai_log.append(f"✅ [{datetime.now().strftime('%H:%M')}] Libro terminado: {libro.titulo}")
+    
+    def eliminar_libro(self, libro):
+        """Elimina un libro"""
+        reply = QMessageBox.question(
+            self,
+            'Confirmar eliminación',
+            f'¿Eliminar "{libro.titulo}"?',
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+        )
+        
+        if reply == QMessageBox.StandardButton.Yes:
+            eliminar_libro(libro.id)
+            self.cargar_libros()
+            self.cargar_libro_actual()
+            self.ai_log.append(f"🗑️ [{datetime.now().strftime('%H:%M')}] Libro eliminado")
+    
+    def cargar_libro_actual(self):
+        """Carga el libro que se está leyendo actualmente"""
+        libro = obtener_libro_actual()
+        
+        if libro:
+            self.lbl_current_title.setText(libro.titulo)
+            self.lbl_current_author.setText(f"✍️ {libro.autor}")
+            
+            # Estadísticas
+            dias_est = libro.get_tiempo_estimado_finalizacion()
+            horas_est = libro.get_horas_estimadas_finalizacion()
+            promedio = libro.get_promedio_paginas_dia()
+            
+            stats_html = f"""
+            <p style='line-height: 1.8; margin: 5px 0;'>
+            <span style='color: #bb86fc;'>📄 Páginas:</span> {libro.paginas_leidas} / {libro.total_paginas}<br>
+            <span style='color: #bb86fc;'>📊 Progreso:</span> {libro.get_porcentaje_completado():.1f}%<br>
+            <span style='color: #bb86fc;'>📈 Promedio:</span> {promedio:.1f} páginas/día<br>
+            """
+            
+            if dias_est:
+                stats_html += f"<span style='color: #bb86fc;'>⏱️ Tiempo estimado:</span> {dias_est} días<br>"
+            
+            if horas_est:
+                stats_html += f"<span style='color: #bb86fc;'>🕐 Horas restantes:</span> ~{horas_est:.1f}h<br>"
+            
+            fecha_est = libro.get_fecha_estimada_finalizacion()
+            if fecha_est:
+                stats_html += f"<span style='color: #bb86fc;'>📅 Estimación:</span> {fecha_est.strftime('%d %B %Y')}"
+            
+            stats_html += "</p>"
+            
+            self.lbl_current_stats.setText(stats_html)
+            
+            # Actualizar anillo de progreso
+            self.progress_ring.update_progress(
+                libro.get_porcentaje_completado(),
+                f"{libro.paginas_leidas}/{libro.total_paginas}",
+                f"{libro.get_paginas_restantes()} páginas"
+            )
+        else:
+            self.lbl_current_title.setText("Ningún libro en lectura")
+            self.lbl_current_author.setText("Agrega un libro en la Biblioteca y empieza a leer")
+            self.lbl_current_stats.setText("")
+            self.progress_ring.update_progress(0, "", "")
+    
+    def on_books_tab_changed(self, index):
+        """Se ejecuta al cambiar de tab en libros"""
+        if index == 0:  # Libro actual
+            self.cargar_libro_actual()
+        elif index == 1:  # Biblioteca
+            self.cargar_libros()
 
 
 # Para testing directo

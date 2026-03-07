@@ -19,8 +19,18 @@ def crear_base_de_datos():
             porcentaje_exito REAL
         )
     """)
-    try: cursor.execute("ALTER TABLE tareas ADD COLUMN fecha_completada TEXT")
-    except sqlite3.OperationalError: pass
+    
+    # Agregar columnas nuevas si no existen
+    try: 
+        cursor.execute("ALTER TABLE tareas ADD COLUMN fecha_completada TEXT")
+    except sqlite3.OperationalError: 
+        pass
+    
+    try:
+        cursor.execute("ALTER TABLE tareas ADD COLUMN prioridad TEXT DEFAULT 'media'")
+    except sqlite3.OperationalError:
+        pass
+    
     conn.commit()
     conn.close()
 
@@ -29,10 +39,14 @@ def guardar_tarea(tarea):
     conn = conectar()
     cursor = conn.cursor()
     fecha_limite = tarea.fecha_limite.strftime("%Y-%m-%d") if hasattr(tarea.fecha_limite, 'strftime') else str(tarea.fecha_limite)
+    
+    # Asegurar que la tarea tenga prioridad
+    prioridad = getattr(tarea, 'prioridad', 'media')
+    
     cursor.execute("""
-        INSERT INTO tareas (nombre, fecha_limite, completada, porcentaje_exito, fecha_completada)
-        VALUES (?, ?, ?, ?, ?)
-    """, (tarea.nombre, fecha_limite, int(tarea.completada), tarea.porcentaje_exito, None))
+        INSERT INTO tareas (nombre, fecha_limite, completada, porcentaje_exito, fecha_completada, prioridad)
+        VALUES (?, ?, ?, ?, ?, ?)
+    """, (tarea.nombre, fecha_limite, int(tarea.completada), tarea.porcentaje_exito, None, prioridad))
     conn.commit()
     conn.close()
 
@@ -40,15 +54,36 @@ def cargar_tareas():
     crear_base_de_datos()
     conn = conectar()
     cursor = conn.cursor()
-    cursor.execute("SELECT id, nombre, fecha_limite, completada, porcentaje_exito FROM tareas")
+    
+    # Verificar si existe la columna prioridad
+    cursor.execute("PRAGMA table_info(tareas)")
+    columnas = [col[1] for col in cursor.fetchall()]
+    tiene_prioridad = 'prioridad' in columnas
+    
+    if tiene_prioridad:
+        cursor.execute("SELECT id, nombre, fecha_limite, completada, porcentaje_exito, prioridad FROM tareas")
+    else:
+        cursor.execute("SELECT id, nombre, fecha_limite, completada, porcentaje_exito FROM tareas")
+    
     filas = cursor.fetchall()
     tareas = []
+    
     for f in filas:
-        t = Tarea(f[1], f[2], id=f[0])
+        if tiene_prioridad and len(f) >= 6:
+            prioridad = f[5] if f[5] else 'media'
+        else:
+            prioridad = 'media'
+        
+        t = Tarea(f[1], f[2], id=f[0], prioridad=prioridad)
         t.completada = bool(f[3])
         t.porcentaje_exito = f[4]
         tareas.append(t)
+    
     conn.close()
+    
+    # Ordenar por prioridad (alta primero) y luego por fecha
+    tareas.sort(key=lambda x: (-x.get_prioridad_valor(), x.fecha_limite))
+    
     return tareas
 
 def actualizar_tarea(id_tarea, completada, exito):
@@ -60,6 +95,18 @@ def actualizar_tarea(id_tarea, completada, exito):
         SET completada = ?, porcentaje_exito = ?, fecha_completada = ?
         WHERE id = ?
     """, (1 if completada else 0, exito, fecha_comp, id_tarea))
+    conn.commit()
+    conn.close()
+
+def actualizar_tarea_completa(id_tarea, nombre, fecha_limite, prioridad):
+    """Actualiza todos los campos de una tarea"""
+    conn = conectar()
+    cursor = conn.cursor()
+    cursor.execute("""
+        UPDATE tareas 
+        SET nombre = ?, fecha_limite = ?, prioridad = ?
+        WHERE id = ?
+    """, (nombre, fecha_limite, prioridad, id_tarea))
     conn.commit()
     conn.close()
 
@@ -97,7 +144,6 @@ def obtener_kpis():
     promedio = promedio if promedio else 0.0
     
     # 3. Cálculo de Racha (Streak)
-    # Obtengo todas las fechas únicas completadas ordenadas descendente
     cursor.execute("""
         SELECT DISTINCT fecha_completada FROM tareas 
         WHERE completada = 1 AND fecha_completada IS NOT NULL 
@@ -109,23 +155,20 @@ def obtener_kpis():
     streak = 0
     if fechas:
         hoy = datetime.now().date()
-        # Convierto strings a date objects
         fechas_obj = [datetime.strptime(f, "%Y-%m-%d").date() for f in fechas]
         
-        # Chequeo si la última fue hoy o ayer para mantener la racha viva
         if fechas_obj[0] == hoy or fechas_obj[0] == (hoy - timedelta(days=1)):
             streak = 1
             fecha_actual = fechas_obj[0]
             
             for i in range(1, len(fechas_obj)):
-                # Si el siguiente en la lista es exactamente un día antes
                 if fechas_obj[i] == (fecha_actual - timedelta(days=1)):
                     streak += 1
                     fecha_actual = fechas_obj[i]
                 else:
                     break
         else:
-            streak = 0 # Se rompió la racha hace más de un día
+            streak = 0
 
     return {
         "total": total_completadas,
@@ -141,8 +184,6 @@ def obtener_actividad_semanal():
     conn = conectar()
     cursor = conn.cursor()
     
-    # SQLite strftime('%w') retorna 0=Domingo, 1=Lunes... 6=Sábado.
-    # Vamos a mapearlo a nuestro formato (0=Lunes... 6=Domingo) en python.
     cursor.execute("""
         SELECT strftime('%w', fecha_completada), COUNT(*) 
         FROM tareas 
@@ -152,16 +193,14 @@ def obtener_actividad_semanal():
     rows = cursor.fetchall()
     conn.close()
     
-    # Inicializo contadores [Mon, Tue, Wed, Thu, Fri, Sat, Sun]
     semana = [0] * 7
     
     for dia_str, cuenta in rows:
-        dia_idx = int(dia_str) # 0=Dom, 1=Lun
-        
-        # Convertir de (0=Dom...6=Sab) a (0=Lun...6=Dom)
-        if dia_idx == 0: idx_final = 6 # Domingo
-        else: idx_final = dia_idx - 1  # Lunes(1)->0
-        
+        dia_idx = int(dia_str)
+        if dia_idx == 0: 
+            idx_final = 6
+        else: 
+            idx_final = dia_idx - 1
         semana[idx_final] = cuenta
         
     return semana
