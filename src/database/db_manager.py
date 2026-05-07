@@ -1,8 +1,9 @@
 import sqlite3
 from datetime import datetime, timedelta
+from pathlib import Path
 from core.habits import Tarea
 
-DB_NAME = "iris_datos.db"
+DB_NAME = str(Path(__file__).resolve().parent.parent.parent / "iris_datos.db")
 
 def conectar():
     return sqlite3.connect(DB_NAME)

@@ -7,10 +7,10 @@ src_path = Path(__file__).parent.parent
 if str(src_path) not in sys.path:
     sys.path.insert(0, str(src_path))
 
-from PyQt6.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QLabel, 
-    QLineEdit, QPushButton, QTableWidget, QTableWidgetItem, QHeaderView, QDateEdit, 
+from PyQt6.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QLabel,
+    QLineEdit, QPushButton, QTableWidget, QTableWidgetItem, QHeaderView, QDateEdit,
     QTextEdit, QProgressBar, QFrame, QGraphicsDropShadowEffect, QMenu, QSpinBox, QTabWidget,
-    QDialog, QDialogButtonBox, QScrollArea, QMessageBox, QComboBox)
+    QDialog, QDialogButtonBox, QScrollArea, QMessageBox, QComboBox, QSizePolicy)
 from PyQt6.QtCore import Qt, QDate, QTimer, QPropertyAnimation, QEasingCurve, pyqtProperty
 from PyQt6.QtGui import QFont, QColor, QAction
 
@@ -42,7 +42,7 @@ class StatusBadge(QLabel):
             font-weight: bold; 
             font-size: 10px;
         """)
-        self.setFixedSize(100, 22)
+        self.setMinimumWidth(85)
 
 # --- BADGE DE PRIORIDAD ---
 class PriorityBadge(QLabel):
@@ -63,7 +63,7 @@ class PriorityBadge(QLabel):
             font-size: 10px;
             letter-spacing: 0.5px;
         """)
-        self.setFixedSize(90, 24)
+        self.setMinimumWidth(80)
 
 # --- KPI CARD ---
 class StatCard(QFrame):
@@ -77,7 +77,8 @@ class StatCard(QFrame):
             }}
             QLabel {{ background: transparent; }}
         """)
-        self.setFixedSize(220, 100)
+        self.setMinimumSize(160, 90)
+        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         l = QVBoxLayout(self)
         t = QLabel(f"{icon} {title}"); t.setStyleSheet("color: #808090; font-size: 11px; font-weight: bold; letter-spacing: 1px;")
         self.v = QLabel(str(value)); self.v.setStyleSheet(f"color: {color}; font-size: 32px; font-weight: 800;")
@@ -273,7 +274,7 @@ class EditTaskDialog(QDialog):
         self.tarea = tarea
         self.setWindowTitle("Editar Tarea")
         self.setModal(True)
-        self.setFixedWidth(450)
+        self.setMinimumWidth(380)
         
         self.setStyleSheet("""
             QDialog { background: #16161e; }
@@ -289,6 +290,14 @@ class EditTaskDialog(QDialog):
             QLineEdit:focus, QDateEdit:focus, QComboBox:focus { border: 1px solid #7c4dff; }
             QComboBox::drop-down { border: none; }
             QComboBox::down-arrow { image: none; border: none; }
+            QComboBox QAbstractItemView {
+                background: #20202a;
+                color: white;
+                border: 1px solid #444455;
+                selection-background-color: #6200ea;
+                selection-color: white;
+                outline: none;
+            }
             QPushButton {
                 background: #6200ea;
                 color: white;
@@ -366,7 +375,16 @@ STYLE_SHEET = """
     
     QComboBox::drop-down { border: none; width: 25px; }
     QComboBox::down-arrow { image: none; border: none; }
-    
+    QComboBox QAbstractItemView {
+        background: #20202a;
+        color: white;
+        border: 1px solid #444455;
+        selection-background-color: #6200ea;
+        selection-color: white;
+        outline: none;
+        padding: 2px;
+    }
+
     QSpinBox { background: #20202a; border: 1px solid #333340; border-radius: 6px; color: #03dac6; font-weight: bold; padding: 8px; font-size: 14px; }
     QSpinBox::up-button, QSpinBox::down-button { width: 0px; }
     
@@ -387,7 +405,8 @@ class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("IRIS - Neural Task Organizer v2.0 🔥")
-        self.resize(1250, 880) 
+        self.resize(1100, 750)
+        self.setMinimumSize(900, 640)
         self.setStyleSheet(STYLE_SHEET)
 
         central = QWidget(); self.setCentralWidget(central)
@@ -408,7 +427,7 @@ class MainWindow(QMainWindow):
         self.tab_analytics = QWidget(); self.setup_analytics(); self.tabs.addTab(self.tab_analytics, "📈 Analytics")
 
         # LOG
-        self.ai_log = QTextEdit(); self.ai_log.setReadOnly(True); self.ai_log.setFixedHeight(50)
+        self.ai_log = QTextEdit(); self.ai_log.setReadOnly(True); self.ai_log.setMinimumHeight(45); self.ai_log.setMaximumHeight(65)
         self.ai_log.setPlaceholderText("System initialized...")
         main_layout.addWidget(self.ai_log)
 
@@ -424,9 +443,9 @@ class MainWindow(QMainWindow):
         
         # --- TOP CARD ---
         self.top_card = QFrame(); self.top_card.setObjectName("dashboard_card")
-        self.top_card.setFixedHeight(340) 
-        
-        tc_layout = QHBoxLayout(self.top_card); tc_layout.setContentsMargins(40, 30, 40, 30); tc_layout.setSpacing(50)
+        self.top_card.setMinimumHeight(270)
+
+        tc_layout = QHBoxLayout(self.top_card); tc_layout.setContentsMargins(25, 20, 25, 20); tc_layout.setSpacing(25)
 
         # 1. IA
         ia_l = QVBoxLayout(); ia_l.setAlignment(Qt.AlignmentFlag.AlignVCenter)
@@ -445,14 +464,14 @@ class MainWindow(QMainWindow):
 
         self.lbl_time = QLabel("25:00")
         self.lbl_time.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.lbl_time.setStyleSheet("font-size: 72px; font-weight: bold; color: white;")
+        self.lbl_time.setStyleSheet("font-size: 58px; font-weight: bold; color: white;")
         
         self.time_ctrl = QWidget()
         h_selector = QHBoxLayout(self.time_ctrl)
         h_selector.setContentsMargins(0,0,0,0)
         h_selector.setAlignment(Qt.AlignmentFlag.AlignCenter)
         
-        self.spin = QSpinBox(); self.spin.setRange(1, 180); self.spin.setValue(25); self.spin.setSuffix(" min"); self.spin.setFixedWidth(100)
+        self.spin = QSpinBox(); self.spin.setRange(1, 180); self.spin.setValue(25); self.spin.setSuffix(" min"); self.spin.setMinimumWidth(85); self.spin.setMaximumWidth(115)
         self.spin.valueChanged.connect(self.update_timer_label_init)
         
         h_selector.addWidget(QLabel("Focus:", styleSheet="color:#808090; font-size:13px; font-weight:bold; margin-right:10px;"))
@@ -465,12 +484,12 @@ class MainWindow(QMainWindow):
         h_btns.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
         self.btn_focus = QPushButton("START FOCUS")
-        self.btn_focus.setFixedSize(150, 45)
+        self.btn_focus.setMinimumSize(110, 42)
         self.btn_focus.clicked.connect(self.toggle_timer)
-        
+
         self.btn_reset = QPushButton("RESET")
         self.btn_reset.setObjectName("btn_action")
-        self.btn_reset.setFixedSize(100, 45)
+        self.btn_reset.setMinimumSize(85, 42)
         self.btn_reset.clicked.connect(self.reset_timer)
 
         h_btns.addWidget(self.btn_focus)
@@ -505,7 +524,7 @@ class MainWindow(QMainWindow):
         # INPUT PARA NUEVA TAREA
         input_card = QFrame()
         input_card.setObjectName("card")
-        input_card.setFixedHeight(130)
+        input_card.setMinimumHeight(130)
         
         ic_layout = QVBoxLayout(input_card)
         ic_layout.setContentsMargins(20, 15, 20, 15)
@@ -527,7 +546,8 @@ class MainWindow(QMainWindow):
         
         self.date_task = QDateEdit()
         self.date_task.setDate(QDate.currentDate())
-        self.date_task.setFixedWidth(140)
+        self.date_task.setMinimumWidth(120)
+        self.date_task.setMaximumWidth(165)
         self.date_task.setMinimumHeight(45)
         in_row2.addWidget(self.date_task)
         
@@ -536,7 +556,8 @@ class MainWindow(QMainWindow):
         self.combo_priority.addItem("⚡ MEDIA", "media")
         self.combo_priority.addItem("📌 BAJA", "baja")
         self.combo_priority.setCurrentIndex(1)  # Media por defecto
-        self.combo_priority.setFixedWidth(140)
+        self.combo_priority.setMinimumWidth(120)
+        self.combo_priority.setMaximumWidth(165)
         self.combo_priority.setMinimumHeight(45)
         in_row2.addWidget(self.combo_priority)
         
@@ -563,9 +584,10 @@ class MainWindow(QMainWindow):
         active_scroll = QScrollArea()
         active_scroll.setWidgetResizable(True)
         active_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        active_scroll.setMaximumHeight(500)
-        
+        active_scroll.viewport().setStyleSheet("background: #0d0d12;")
+
         self.active_container = QWidget()
+        self.active_container.setStyleSheet("background: #0d0d12;")
         self.active_layout = QVBoxLayout(self.active_container)
         self.active_layout.setSpacing(12)
         self.active_layout.setContentsMargins(5, 5, 5, 5)
@@ -584,9 +606,10 @@ class MainWindow(QMainWindow):
         completed_scroll = QScrollArea()
         completed_scroll.setWidgetResizable(True)
         completed_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        completed_scroll.setMaximumHeight(500)
-        
+        completed_scroll.viewport().setStyleSheet("background: #0d0d12;")
+
         self.completed_container = QWidget()
+        self.completed_container.setStyleSheet("background: #0d0d12;")
         self.completed_layout = QVBoxLayout(self.completed_container)
         self.completed_layout.setSpacing(12)
         self.completed_layout.setContentsMargins(5, 5, 5, 5)
